@@ -13,9 +13,19 @@ O script exibe uma lista interativa (TUI) dos vídeos presentes no diretório, c
 - 📁 **Múltiplos formatos de saída** (`txt`, `srt`, `vtt`, `json`, `tsv`) salvos em `output/`.
 - 🔁 Permite transcrever **vários arquivos** em sequência.
 
+## Imagens
+
+<img align=right width=680 src=https://github.com/developerdiegorodrigues/transcribe/blob/main/images/converter_680x336.png />
+
+<img align=right width=345 src=https://github.com/developerdiegorodrigues/transcribe/blob/main/images/converter_345x472.png />
+
 ## Formatos de vídeo suportados
 
 `.mp4` · `.mkv` · `.avi` · `.mov` · `.webm` · `.flv` · `.wmv` · `.m4v`
+
+<br/>
+<br/>
+<br/>
 
 ## Pré-requisitos
 
