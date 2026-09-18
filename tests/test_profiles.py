@@ -28,3 +28,12 @@ class ProfileTests(TestCase):
         self.assertEqual(config.model, "large-v3")
         self.assertEqual(config.batch_size, 2)
         self.assertEqual(config.output_dir, Path("custom"))
+
+    def test_lyrics_profile_enables_vocal_quality_pipeline(self):
+        config = config_from_profile("lyrics")
+        self.assertEqual(config.model, "large-v3")
+        self.assertTrue(config.separate_vocals)
+        self.assertTrue(config.quality_review)
+        self.assertTrue(config.retry_low_confidence)
+        self.assertFalse(config.condition_on_previous_text)
+        self.assertNotIn(1.0, config.temperatures)

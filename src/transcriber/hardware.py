@@ -136,6 +136,7 @@ def diagnostic_lines() -> list[str]:
         f"faster-whisper: {_package_version('faster-whisper')}",
         f"CTranslate2: {ct2_version}",
         f"CUDA no CTranslate2: {'sim' if ct2_cuda else 'não'}",
+        f"Demucs: {_package_version('demucs')}",
     ]
     if cuda.error:
         lines.append(f"Erro CUDA: {cuda.error}")

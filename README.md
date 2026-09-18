@@ -9,10 +9,11 @@ saídas em múltiplos formatos.
 ## Recursos
 
 - Interface interativa no terminal para selecionar vídeos.
-- Entrada direta de mídia, sem criar um WAV intermediário.
+- Entrada direta de mídia nos perfis gerais, sem WAV intermediário persistente.
 - Seleção automática entre CUDA e CPU.
 - Backend `faster-whisper` com batch adaptativo em caso de falta de VRAM.
 - Perfis prontos para velocidade, qualidade, CPU e compatibilidade.
+- Perfil para letras com separação vocal Demucs e revisão de baixa confiança.
 - Comando de diagnóstico para driver, CUDA, PyTorch, Whisper e FFmpeg.
 - Configuração por linha de comando de modelo, idioma, dispositivo e formato.
 - Saídas `txt`, `srt`, `vtt`, `json` e `tsv` organizadas em `output/`.
@@ -107,6 +108,10 @@ checkout:
 --beam-size N
 --vad|--no-vad
 --word-timestamps|--no-word-timestamps
+--separate-vocals|--no-separate-vocals
+--separation-device auto|cpu|cuda
+--quality-review|--no-quality-review
+--retry-low-confidence|--no-retry-low-confidence
 ```
 
 Exemplos:
@@ -130,10 +135,48 @@ sobrescreve o valor definido pelo perfil.
 | `quality` | faster-whisper | `large-v3` | auto | FP16 CUDA / INT8 CPU | 4 |
 | `cpu` | faster-whisper | `small` | CPU | INT8 | 4 |
 | `legacy` | openai-whisper | `large` | auto | FP16 CUDA / FP32 CPU | 1 |
+| `lyrics` | faster-whisper + Demucs | `large-v3` | auto | FP16 CUDA / INT8 CPU | 4 |
 
 Se o CTranslate2 ficar sem VRAM, o batch é reduzido sucessivamente até 1. Em GPUs
 Blackwell/RTX 50, use FP16: versões atuais do CTranslate2 desabilitam INT8 nessa
 arquitetura.
+
+## Transcrição de letras
+
+O perfil `lyrics` foi desenhado para vídeos musicais:
+
+```bash
+.venv/bin/transcriber musica.mp4 --profile lyrics --language English
+```
+
+O fluxo desse perfil é:
+
+1. O FFmpeg extrai temporariamente áudio estéreo em 44,1 kHz.
+2. O Demucs `htdemucs` isola o stem vocal.
+3. O processo do Demucs termina, liberando CPU/GPU antes de carregar o Whisper.
+4. O `large-v3` transcreve os vocais sem VAD e sem carregar contexto entre janelas.
+5. Intervalos de baixa confiança são agrupados e reavaliados com temperatura zero.
+6. A segunda passagem só substitui um intervalo quando melhora a probabilidade média.
+7. Todo áudio intermediário é removido mesmo se a execução falhar.
+
+Além dos formatos normais, são gerados:
+
+```text
+<nome>.review.json
+<nome>.review.txt
+```
+
+Esses relatórios apontam baixa probabilidade, compressão excessiva, alta probabilidade
+de silêncio ou temperatura elevada. Eles servem como fila objetiva de revisão; o
+texto suspeito não é apagado silenciosamente.
+
+As opções do perfil podem ser desativadas ou ajustadas individualmente:
+
+```bash
+.venv/bin/transcriber musica.mp4 --profile lyrics --no-separate-vocals
+.venv/bin/transcriber musica.mp4 --profile lyrics --separation-device cpu
+.venv/bin/transcriber musica.mp4 --profile quality --quality-review
+```
 
 ## Benchmark
 
@@ -167,8 +210,9 @@ output/<nome-do-video>/<nome-do-video>.srt
 ...
 ```
 
-O Whisper recebe o vídeo diretamente e faz internamente a leitura da faixa de
-áudio. O antigo `output/audio.wav` temporário não é mais necessário.
+Nos perfis gerais, o Whisper recebe o vídeo diretamente. O perfil `lyrics` cria
+áudio apenas dentro de um diretório temporário exclusivo, removido ao fim da etapa;
+o antigo `output/audio.wav` compartilhado não é mais necessário.
 
 ## Desenvolvimento e testes
 
@@ -193,6 +237,8 @@ Estrutura principal:
 │   ├── media.py
 │   ├── outputs.py
 │   ├── pipeline.py
+│   ├── quality.py
+│   ├── separation.py
 │   └── ui.py
 ├── tests/
 └── transcribe.py

@@ -22,7 +22,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="transcriber",
         description="Transcreve vídeos localmente com OpenAI Whisper.",
     )
-    parser.add_argument("--version", action="version", version="%(prog)s 0.3.0")
+    parser.add_argument("--version", action="version", version="%(prog)s 0.4.0")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("doctor", help="diagnostica dependências, driver e CUDA")
@@ -62,6 +62,31 @@ def build_parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=None,
         help="timestamps por palavra",
+    )
+    transcribe.add_argument(
+        "--separate-vocals",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="isola os vocais com Demucs antes da transcrição",
+    )
+    transcribe.add_argument(
+        "--separation-device",
+        choices=("auto", "cpu", "cuda"),
+        default="auto",
+        help="dispositivo usado pelo Demucs",
+    )
+    transcribe.add_argument("--demucs-model", default="htdemucs", help="modelo do Demucs")
+    transcribe.add_argument(
+        "--quality-review",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="gera relatório de trechos com baixa confiança",
+    )
+    transcribe.add_argument(
+        "--retry-low-confidence",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="reavalia intervalos de baixa confiança",
     )
 
     benchmark = subparsers.add_parser("benchmark", help="compara perfis de transcrição")
@@ -112,6 +137,11 @@ def _run_transcription(args: argparse.Namespace) -> int:
         beam_size=args.beam_size,
         vad_filter=args.vad,
         word_timestamps=args.word_timestamps,
+        separate_vocals=args.separate_vocals,
+        separation_device=args.separation_device,
+        demucs_model=args.demucs_model,
+        quality_review=args.quality_review,
+        retry_low_confidence=args.retry_low_confidence,
     )
     cuda = probe_cuda()
     device = resolve_device(config.requested_device, cuda, config.backend)
