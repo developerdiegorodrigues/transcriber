@@ -17,3 +17,10 @@ class CliTests(TestCase):
 
     def test_doctor_is_preserved(self):
         self.assertEqual(_normalize_argv(["doctor"]), ["doctor"])
+
+    def test_fast_profile_is_default(self):
+        args = build_parser().parse_args(["transcribe", "video.mp4"])
+        self.assertEqual(args.profile, "fast")
+
+    def test_benchmark_is_preserved(self):
+        self.assertEqual(_normalize_argv(["benchmark", "video.mp4"])[0], "benchmark")

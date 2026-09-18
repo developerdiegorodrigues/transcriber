@@ -54,20 +54,37 @@ def probe_cuda() -> CudaStatus:
         )
 
 
-def resolve_device(requested: str, status: CudaStatus | None = None) -> str:
+def _ctranslate2_cuda_available() -> tuple[bool, str | None]:
+    try:
+        import ctranslate2
+
+        return ctranslate2.get_cuda_device_count() > 0, None
+    except Exception as exc:  # pragma: no cover - installation/driver dependent
+        return False, str(exc)
+
+
+def resolve_device(
+    requested: str,
+    status: CudaStatus | None = None,
+    backend: str = "openai-whisper",
+) -> str:
     status = status or probe_cuda()
+    available = status.available
+    error = status.error
+    if backend == "faster-whisper":
+        available, error = _ctranslate2_cuda_available()
     if requested == "cpu":
         return "cpu"
     if requested == "cuda":
-        if not status.available:
-            detail = f" ({status.error})" if status.error else ""
+        if not available:
+            detail = f" ({error})" if error else ""
             raise HardwareError(
-                "CUDA foi solicitado, mas o PyTorch não consegue acessar a GPU"
+                f"CUDA foi solicitado, mas o backend {backend} não consegue acessar a GPU"
                 f"{detail}. Execute 'transcriber doctor' para diagnosticar."
             )
         return "cuda"
     if requested == "auto":
-        return "cuda" if status.available else "cpu"
+        return "cuda" if available else "cpu"
     raise HardwareError(f"Dispositivo desconhecido: {requested}")
 
 
@@ -103,6 +120,8 @@ def _nvidia_smi_status() -> str:
 
 def diagnostic_lines() -> list[str]:
     cuda = probe_cuda()
+    ct2_version = _package_version("ctranslate2")
+    ct2_cuda, ct2_error = _ctranslate2_cuda_available()
     lines = [
         "Diagnóstico do transcriber",
         f"Sistema: {platform.platform()}",
@@ -114,11 +133,23 @@ def diagnostic_lines() -> list[str]:
         f"PyTorch: {cuda.torch_version or 'não instalado'}",
         f"CUDA do PyTorch: {cuda.runtime_version or 'indisponível'}",
         f"CUDA disponível: {'sim' if cuda.available else 'não'}",
+        f"faster-whisper: {_package_version('faster-whisper')}",
+        f"CTranslate2: {ct2_version}",
+        f"CUDA no CTranslate2: {'sim' if ct2_cuda else 'não'}",
     ]
     if cuda.error:
         lines.append(f"Erro CUDA: {cuda.error}")
+    if ct2_error:
+        lines.append(f"Erro CTranslate2/CUDA: {ct2_error}")
     for index, name in enumerate(cuda.devices):
         memory = cuda.total_memory_mib[index]
         lines.append(f"GPU {index}: {name} ({memory} MiB)")
-    lines.append(f"Dispositivo automático: {resolve_device('auto', cuda)}")
+    lines.append(
+        f"Dispositivo automático (openai-whisper): "
+        f"{resolve_device('auto', cuda, 'openai-whisper')}"
+    )
+    lines.append(
+        f"Dispositivo automático (faster-whisper): "
+        f"{resolve_device('auto', cuda, 'faster-whisper')}"
+    )
     return lines

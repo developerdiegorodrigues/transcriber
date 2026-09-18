@@ -26,6 +26,7 @@
 *.safetensors
 /models/
 /.cache/
+/benchmarks/results/
 
 # Local configuration and credentials
 .env

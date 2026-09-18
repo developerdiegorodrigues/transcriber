@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "video-transcriber"
-version = "0.2.0"
+version = "0.3.0"
 description = "CLI local para transcrição de vídeos com Whisper"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -13,6 +13,8 @@ authors = [
   { name = "Diego Rodrigues" },
 ]
 dependencies = [
+  "ctranslate2==4.8.2",
+  "faster-whisper==1.2.1",
   "openai-whisper==20250625",
 ]
 
