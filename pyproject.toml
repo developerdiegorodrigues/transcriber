@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "video-transcriber"
-version = "0.4.0"
+version = "0.5.0"
 description = "CLI local para transcrição de vídeos com Whisper"
 readme = "README.md"
 requires-python = ">=3.10"

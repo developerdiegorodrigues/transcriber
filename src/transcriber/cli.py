@@ -13,8 +13,8 @@ from .config import BACKENDS, OUTPUT_FORMATS, PROFILES, config_from_profile
 from .errors import TranscriberError
 from .hardware import diagnostic_lines, probe_cuda, resolve_device
 from .media import list_video_files, validate_video_file
-from .pipeline import transcribe_file
-from .ui import select_file
+from .jobs import run_job
+from .ui import select_files
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -22,7 +22,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="transcriber",
         description="Transcreve vídeos localmente com OpenAI Whisper.",
     )
-    parser.add_argument("--version", action="version", version="%(prog)s 0.4.0")
+    parser.add_argument("--version", action="version", version="%(prog)s 0.5.0")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("doctor", help="diagnostica dependências, driver e CUDA")
@@ -88,6 +88,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="reavalia intervalos de baixa confiança",
     )
+    existing = transcribe.add_mutually_exclusive_group()
+    existing.add_argument(
+        "--skip-existing", action="store_true", help="ignora mídias que já possuem saída"
+    )
+    existing.add_argument(
+        "--force", action="store_true", help="substitui uma saída existente após sucesso"
+    )
 
     benchmark = subparsers.add_parser("benchmark", help="compara perfis de transcrição")
     benchmark.add_argument("file", type=Path, help="vídeo usado na comparação")
@@ -117,8 +124,7 @@ def _interactive_files() -> list[Path]:
     files = list_video_files(Path.cwd())
     if not files:
         raise TranscriberError(f"Nenhum vídeo encontrado em: {Path.cwd()}")
-    selected = select_file(files)
-    return [selected] if selected else []
+    return select_files(files)
 
 
 def _run_transcription(args: argparse.Namespace) -> int:
@@ -149,7 +155,18 @@ def _run_transcription(args: argparse.Namespace) -> int:
         print("Aviso: CUDA indisponível; usando CPU. Execute 'transcriber doctor' para detalhes.")
     files = [validate_video_file(path) for path in args.files] if args.files else _interactive_files()
     for media_path in files:
-        transcribe_file(media_path, config, device)
+        outcome = run_job(
+            media_path,
+            config,
+            device,
+            skip_existing=args.skip_existing,
+            force=args.force,
+        )
+        if outcome:
+            print(
+                f"Resultado publicado em {outcome.output_dir} "
+                f"({outcome.elapsed_seconds:.2f}s)"
+            )
     return 0
 
 
@@ -182,6 +199,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "benchmark":
             return _run_benchmark(args)
         return _run_transcription(args)
+    except KeyboardInterrupt:
+        print("\nOperação interrompida; arquivos temporários removidos.", file=sys.stderr)
+        return 130
     except (TranscriberError, ValueError) as exc:
         print(f"ERRO: {exc}", file=sys.stderr)
         return 1

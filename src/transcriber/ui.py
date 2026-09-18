@@ -6,8 +6,8 @@ import curses
 from pathlib import Path
 
 
-def select_file(files: list[Path]) -> Path | None:
-    def draw(stdscr, selected: int, scroll: int) -> None:
+def select_files(files: list[Path]) -> list[Path]:
+    def draw(stdscr, selected: int, scroll: int, checked: set[int]) -> None:
         stdscr.clear()
         height, width = stdscr.getmaxyx()
         usable_width = max(1, width - 1)
@@ -21,7 +21,8 @@ def select_file(files: list[Path]) -> Path | None:
         for index in range(min(visible_rows, len(files) - scroll)):
             real_index = index + scroll
             row = index + 2
-            prefix = " ► " if real_index == selected else "   "
+            mark = "[x]" if real_index in checked else "[ ]"
+            prefix = f" ► {mark} " if real_index == selected else f"   {mark} "
             line = (prefix + files[real_index].name).ljust(usable_width)
             if real_index == selected:
                 stdscr.attron(curses.color_pair(1) | curses.A_BOLD)
@@ -31,8 +32,8 @@ def select_file(files: list[Path]) -> Path | None:
                 stdscr.addnstr(row, 0, line, usable_width)
 
         if height >= 2:
-            help_line = " ↑↓/jk: navegar   Enter: selecionar   q/Esc: sair "
-            counter = f" {selected + 1}/{len(files)} "
+            help_line = " ↑↓/jk: navegar   Espaço: marcar   a: todos   Enter: confirmar "
+            counter = f" {len(checked)} marcados | {selected + 1}/{len(files)} "
             stdscr.addnstr(height - 2, 0, "─" * usable_width, usable_width)
             stdscr.addnstr(height - 1, 0, help_line + counter, usable_width)
         stdscr.refresh()
@@ -45,10 +46,11 @@ def select_file(files: list[Path]) -> Path | None:
         curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_WHITE)
         selected = 0
         scroll = 0
+        checked: set[int] = set()
         while True:
             height, _ = stdscr.getmaxyx()
             visible_rows = max(1, height - 5)
-            draw(stdscr, selected, scroll)
+            draw(stdscr, selected, scroll, checked)
             key = stdscr.getch()
             if key in (curses.KEY_UP, ord("k")) and selected > 0:
                 selected -= 1
@@ -58,8 +60,22 @@ def select_file(files: list[Path]) -> Path | None:
                 if selected >= scroll + visible_rows:
                     scroll = selected - visible_rows + 1
             elif key in (curses.KEY_ENTER, 10, 13):
-                return files[selected]
+                indices = sorted(checked) if checked else [selected]
+                return [files[index] for index in indices]
+            elif key == ord(" "):
+                if selected in checked:
+                    checked.remove(selected)
+                else:
+                    checked.add(selected)
+            elif key in (ord("a"), ord("A")):
+                checked = set() if len(checked) == len(files) else set(range(len(files)))
             elif key in (ord("q"), ord("Q"), 27):
-                return None
+                return []
 
     return curses.wrapper(run)
+
+
+def select_file(files: list[Path]) -> Path | None:
+    """Backward-compatible single-file selector."""
+    selected = select_files(files)
+    return selected[0] if selected else None

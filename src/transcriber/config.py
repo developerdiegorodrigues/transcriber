@@ -57,6 +57,7 @@ PROFILES: dict[str, Profile] = {
 
 @dataclass(frozen=True, slots=True)
 class TranscriptionConfig:
+    profile_name: str = "custom"
     backend: str = "faster-whisper"
     model: str = "turbo"
     language: str | None = "English"
@@ -127,6 +128,7 @@ def config_from_profile(
     except KeyError as exc:
         raise ValueError(f"Perfil desconhecido: {profile_name}") from exc
     return TranscriptionConfig(
+        profile_name=profile_name,
         backend=backend or profile.backend,
         model=model or profile.model,
         language=language,

@@ -14,6 +14,8 @@ saídas em múltiplos formatos.
 - Backend `faster-whisper` com batch adaptativo em caso de falta de VRAM.
 - Perfis prontos para velocidade, qualidade, CPU e compatibilidade.
 - Perfil para letras com separação vocal Demucs e revisão de baixa confiança.
+- Seleção múltipla na interface interativa.
+- Publicação atômica, retomada por arquivo e metadados de execução.
 - Comando de diagnóstico para driver, CUDA, PyTorch, Whisper e FFmpeg.
 - Configuração por linha de comando de modelo, idioma, dispositivo e formato.
 - Saídas `txt`, `srt`, `vtt`, `json` e `tsv` organizadas em `output/`.
@@ -112,6 +114,8 @@ checkout:
 --separation-device auto|cpu|cuda
 --quality-review|--no-quality-review
 --retry-low-confidence|--no-retry-low-confidence
+--skip-existing
+--force
 ```
 
 Exemplos:
@@ -126,6 +130,10 @@ Com `--device auto`, CUDA é usada quando estiver realmente acessível pelo PyTo
 caso contrário, a CPU é usada com um aviso. Com `--device cuda`, a ausência de CUDA
 é tratada como erro, evitando um fallback silencioso. Qualquer opção explícita
 sobrescreve o valor definido pelo perfil.
+
+Na interface interativa, use `Espaço` para marcar vários vídeos, `a` para marcar ou
+desmarcar todos e `Enter` para confirmar. Sem itens marcados, `Enter` processa apenas
+o item sob o cursor.
 
 ## Perfis
 
@@ -207,12 +215,30 @@ Cada mídia recebe seu próprio diretório e preserva o nome original nos artefa
 ```text
 output/<nome-do-video>/<nome-do-video>.txt
 output/<nome-do-video>/<nome-do-video>.srt
+output/<nome-do-video>/<nome-do-video>.metadata.json
 ...
 ```
 
 Nos perfis gerais, o Whisper recebe o vídeo diretamente. O perfil `lyrics` cria
 áudio apenas dentro de um diretório temporário exclusivo, removido ao fim da etapa;
 o antigo `output/audio.wav` compartilhado não é mais necessário.
+
+Os artefatos são produzidos primeiro em um diretório temporário no mesmo sistema de
+arquivos e publicados juntos apenas após o sucesso. Uma saída existente nunca é
+sobrescrita implicitamente:
+
+```bash
+# Ignora itens já processados em um lote
+.venv/bin/transcriber *.mp4 --skip-existing
+
+# Substitui a saída somente depois que a nova transcrição terminar
+.venv/bin/transcriber video.mp4 --force
+```
+
+O arquivo `metadata.json` registra perfil, modelo, backend, precisão, batch efetivo,
+tempo gasto, versões e lista de artefatos. Ele não registra o caminho absoluto da
+mídia ou do diretório de saída. Em `Ctrl+C`, o programa retorna código 130 e remove
+os arquivos temporários, preservando qualquer resultado publicado anteriormente.
 
 ## Desenvolvimento e testes
 
@@ -234,6 +260,7 @@ Estrutura principal:
 │   ├── cli.py
 │   ├── config.py
 │   ├── hardware.py
+│   ├── jobs.py
 │   ├── media.py
 │   ├── outputs.py
 │   ├── pipeline.py

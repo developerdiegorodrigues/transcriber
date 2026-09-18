@@ -8,6 +8,7 @@ class ProfileTests(TestCase):
     def test_fast_profile_targets_fp16_on_cuda(self):
         config = config_from_profile("fast")
         self.assertEqual(config.backend, "faster-whisper")
+        self.assertEqual(config.profile_name, "fast")
         self.assertEqual(config.model, "turbo")
         self.assertEqual(config.batch_size, 8)
         self.assertEqual(config.compute_type_for("cuda"), "float16")
