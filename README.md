@@ -1,95 +1,151 @@
 # transcribe
 
-Ferramenta de linha de comando para **transcrição de vídeos** usando o [OpenAI Whisper](https://github.com/openai/whisper).
-
-O script exibe uma lista interativa (TUI) dos vídeos presentes no diretório, converte o arquivo selecionado para WAV via `ffmpeg` e gera a transcrição com o Whisper em múltiplos formatos.
+Ferramenta de linha de comando para transcrição local de vídeos com
+[OpenAI Whisper](https://github.com/openai/whisper). Ela oferece seleção interativa,
+processamento em lote, detecção automática de CUDA e saídas em múltiplos formatos.
 
 ## Recursos
 
-- 🎛️ **Interface interativa no terminal** (curses) para selecionar o vídeo.
-- 🔄 **Conversão automática** de vídeo para áudio WAV (16 kHz, mono) com `ffmpeg`.
-- 🧠 **Transcrição com Whisper** (modelo `large` por padrão).
-- 📦 **Auto-instalação**: cria automaticamente um ambiente virtual `.venv` e instala o `openai-whisper`.
-- 📁 **Múltiplos formatos de saída** (`txt`, `srt`, `vtt`, `json`, `tsv`) salvos em `output/`.
-- 🔁 Permite transcrever **vários arquivos** em sequência.
-
-## Imagens
-
-<img align=right width=680 src=https://github.com/developerdiegorodrigues/transcribe/blob/main/images/converter_680x336.png />
-
-<img align=right width=345 src=https://github.com/developerdiegorodrigues/transcribe/blob/main/images/converter_345x472.png />
-
-## Formatos de vídeo suportados
-
-`.mp4` · `.mkv` · `.avi` · `.mov` · `.webm` · `.flv` · `.wmv` · `.m4v`
-
-<br/>
-<br/>
-<br/>
+- Interface interativa no terminal para selecionar vídeos.
+- Entrada direta de mídia, sem criar um WAV intermediário.
+- Seleção automática entre CUDA e CPU.
+- Comando de diagnóstico para driver, CUDA, PyTorch, Whisper e FFmpeg.
+- Configuração por linha de comando de modelo, idioma, dispositivo e formato.
+- Saídas `txt`, `srt`, `vtt`, `json` e `tsv` organizadas em `output/`.
+- Dependências fixadas para instalações reproduzíveis.
 
 ## Pré-requisitos
 
-- **Python 3** (com o módulo `venv`)
-- **ffmpeg** instalado no sistema:
+- Python 3.10 ou mais recente, com suporte a `venv`.
+- FFmpeg instalado no sistema.
+- Para GPU, driver NVIDIA compatível com o runtime CUDA instalado.
 
-  ```bash
-  sudo apt install ffmpeg
-  ```
+No Ubuntu, instale os pacotes de sistema com:
 
-> O pacote `openai-whisper` é instalado automaticamente pelo próprio script em um ambiente virtual `.venv`.
+```bash
+sudo apt install python3-venv ffmpeg
+```
+
+## Instalação reproduzível
+
+O programa não instala nem atualiza pacotes durante a execução. Prepare o ambiente
+uma única vez:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.lock
+.venv/bin/python -m pip install --no-deps -e .
+```
+
+O `requirements.lock` representa o ambiente Linux/CUDA validado pelo projeto. O
+`pyproject.toml` contém os metadados do pacote e disponibiliza o comando
+`.venv/bin/transcriber`.
+
+## Diagnóstico
+
+Antes da primeira transcrição — e novamente depois de trocar a placa ou o driver —
+execute:
+
+```bash
+.venv/bin/transcriber doctor
+```
+
+O diagnóstico mostra a versão do PyTorch, o runtime CUDA, o resultado de
+`nvidia-smi`, as GPUs acessíveis e o dispositivo que seria escolhido pelo modo
+automático.
 
 ## Uso
 
-1. Coloque os arquivos de vídeo na mesma pasta do `transcribe.py`.
-2. Execute:
+Abra o seletor interativo para os vídeos do diretório atual:
 
-   ```bash
-   python3 transcribe.py
-   ```
+```bash
+.venv/bin/transcriber
+```
 
-3. Na primeira execução, o script cria o `.venv` e instala as dependências automaticamente, reiniciando em seguida dentro do ambiente virtual.
-4. Use as teclas para navegar e selecionar o vídeo:
+Transcreva um ou vários arquivos diretamente:
 
-   | Tecla            | Ação                  |
-   | ---------------- | --------------------- |
-   | `↑` / `k`        | Mover para cima       |
-   | `↓` / `j`        | Mover para baixo      |
-   | `Enter`          | Selecionar o arquivo  |
-   | `q` / `Esc`      | Sair                  |
+```bash
+.venv/bin/transcriber video.mp4
+.venv/bin/transcriber primeiro.mp4 segundo.mkv
+```
 
-5. Ao final, o script pergunta se você deseja transcrever outro arquivo.
+O subcomando explícito também é aceito:
+
+```bash
+.venv/bin/transcriber transcribe video.mp4
+```
+
+O arquivo `transcribe.py` permanece como entrada compatível para uso a partir do
+checkout:
+
+```bash
+.venv/bin/python transcribe.py video.mp4
+```
+
+### Opções principais
+
+```text
+--device auto|cpu|cuda
+--model NOME
+--language IDIOMA|auto
+--output-dir DIRETÓRIO
+--output-format all|txt|vtt|srt|tsv|json
+```
+
+Exemplos:
+
+```bash
+.venv/bin/transcriber video.mp4 --device cuda --model large-v3
+.venv/bin/transcriber video.mp4 --language auto --output-format srt
+```
+
+Com `--device auto`, CUDA é usada quando estiver realmente acessível pelo PyTorch;
+caso contrário, a CPU é usada com um aviso. Com `--device cuda`, a ausência de CUDA
+é tratada como erro, evitando um fallback silencioso.
 
 ## Saída
 
-As transcrições são salvas em:
+Cada mídia recebe seu próprio diretório e preserva o nome original nos artefatos:
 
-```
-output/<nome-do-video>/
-```
-
-Um arquivo temporário `output/audio.wav` é gerado durante a conversão e removido automaticamente após a transcrição.
-
-## Configuração
-
-Os parâmetros do Whisper podem ser ajustados diretamente no início do `transcribe.py`:
-
-```python
-WHISPER_MODEL    = "large"     # tiny, base, small, medium, large
-WHISPER_LANGUAGE = "English"   # idioma do áudio
-WHISPER_DEVICE   = "cpu"       # cpu ou cuda (GPU)
+```text
+output/<nome-do-video>/<nome-do-video>.txt
+output/<nome-do-video>/<nome-do-video>.srt
+...
 ```
 
-> 💡 O modelo `large` em CPU pode levar vários minutos. Para acelerar, use um modelo menor ou um dispositivo com GPU (`cuda`).
+O Whisper recebe o vídeo diretamente e faz internamente a leitura da faixa de
+áudio. O antigo `output/audio.wav` temporário não é mais necessário.
 
-## Estrutura do projeto
+## Desenvolvimento e testes
 
+Os testes usam apenas a biblioteca padrão:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -v
 ```
+
+Estrutura principal:
+
+```text
 .
-├── transcribe.py   # script principal
-├── output/         # transcrições geradas
-├── LICENSE
-└── README.md
+├── pyproject.toml
+├── requirements.lock
+├── src/transcriber/
+│   ├── backends/
+│   ├── cli.py
+│   ├── config.py
+│   ├── hardware.py
+│   ├── media.py
+│   └── ui.py
+├── tests/
+└── transcribe.py
 ```
+
+## Imagens
+
+<img width="680" src="https://github.com/developerdiegorodrigues/transcribe/blob/main/images/converter_680x336.png" alt="Seletor interativo de vídeos" />
+
+<img width="345" src="https://github.com/developerdiegorodrigues/transcribe/blob/main/images/converter_345x472.png" alt="Progresso de uma transcrição" />
 
 ## Licença
 

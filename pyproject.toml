@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools==81.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "video-transcriber"
+version = "0.2.0"
+description = "CLI local para transcrição de vídeos com Whisper"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Diego Rodrigues" },
+]
+dependencies = [
+  "openai-whisper==20250625",
+]
+
+[project.scripts]
+transcriber = "transcriber.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

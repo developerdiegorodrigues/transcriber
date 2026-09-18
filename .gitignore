@@ -1,8 +1,40 @@
-# Manual
+# Project-local environments and generated output
 .venv/
-.output/**
-.mp4
-.wav
+/output/
+
+# Source media can be very large and may not be redistributable
+*.mp4
+*.mkv
+*.avi
+*.mov
+*.webm
+*.flv
+*.wmv
+*.m4v
+*.wav
+*.mp3
+*.flac
+*.aac
+*.ogg
+*.m4a
+
+# Downloaded model weights and inference caches
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.safetensors
+/models/
+/.cache/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials*.json
+service-account*.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
