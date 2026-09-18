@@ -67,6 +67,32 @@ O diagnóstico mostra PyTorch e CTranslate2 separadamente, pois um backend pode 
 acesso à GPU enquanto o outro não. Também informa o resultado de `nvidia-smi` e o
 dispositivo automático de cada backend.
 
+Para gerar um relatório estruturado que possa ser comparado ou anexado a uma issue,
+sem expor caminhos pessoais do sistema:
+
+```bash
+.venv/bin/transcriber doctor --json
+```
+
+### Validação após o upgrade da GPU
+
+Depois de instalar a RTX 5060 Ti e atualizar o driver, valide separadamente os dois
+backends. Cada comando termina com código diferente de zero se a GPU não estiver
+acessível, o que permite usá-los também em scripts:
+
+```bash
+.venv/bin/transcriber doctor --require-cuda --backend faster-whisper
+.venv/bin/transcriber doctor --require-cuda --backend openai-whisper
+```
+
+Os dois resultados devem mostrar a RTX 5060 Ti com aproximadamente 16 GiB, e as
+linhas `CUDA disponível` e `CUDA no CTranslate2` devem indicar `sim`. Depois disso,
+registre uma linha de base com a mesma mídia antes de alterar modelos ou batches:
+
+```bash
+.venv/bin/transcriber benchmark video.mp4 --profiles fast quality
+```
+
 ## Uso
 
 Abra o seletor interativo para os vídeos do diretório atual:

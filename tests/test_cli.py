@@ -1,6 +1,10 @@
+import json
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 from unittest import TestCase
+from unittest.mock import patch
 
-from transcriber.cli import _normalize_argv, build_parser
+from transcriber.cli import _normalize_argv, build_parser, main
 
 
 class CliTests(TestCase):
@@ -24,3 +28,41 @@ class CliTests(TestCase):
 
     def test_benchmark_is_preserved(self):
         self.assertEqual(_normalize_argv(["benchmark", "video.mp4"])[0], "benchmark")
+
+    @patch("transcriber.cli.diagnostic_report")
+    def test_doctor_json_passes_required_cuda(self, diagnostic_report):
+        diagnostic_report.return_value = {
+            "backends": {
+                "faster-whisper": {"cuda_available": True},
+                "openai-whisper": {"cuda_available": False},
+            }
+        }
+        stdout = StringIO()
+
+        with redirect_stdout(stdout):
+            result = main(
+                ["doctor", "--json", "--require-cuda", "--backend", "faster-whisper"]
+            )
+
+        report = json.loads(stdout.getvalue())
+        self.assertEqual(result, 0)
+        self.assertTrue(report["validation"]["passed"])
+
+    @patch("transcriber.cli.diagnostic_lines", return_value=["diagnóstico"])
+    @patch("transcriber.cli.diagnostic_report")
+    def test_doctor_fails_when_backend_cannot_access_cuda(
+        self, diagnostic_report, _diagnostic_lines
+    ):
+        diagnostic_report.return_value = {
+            "backends": {
+                "faster-whisper": {"cuda_available": False},
+                "openai-whisper": {"cuda_available": True},
+            }
+        }
+        stderr = StringIO()
+
+        with redirect_stdout(StringIO()), redirect_stderr(stderr):
+            result = main(["doctor", "--require-cuda", "--backend", "faster-whisper"])
+
+        self.assertEqual(result, 1)
+        self.assertIn("FALHOU", stderr.getvalue())

@@ -2,7 +2,7 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from transcriber.errors import HardwareError
-from transcriber.hardware import CudaStatus, resolve_device
+from transcriber.hardware import CudaStatus, diagnostic_lines, resolve_device
 
 
 class ResolveDeviceTests(TestCase):
@@ -30,3 +30,41 @@ class ResolveDeviceTests(TestCase):
             resolve_device("auto", torch_status, "faster-whisper"),
             "cuda",
         )
+
+
+class DiagnosticLinesTests(TestCase):
+    def test_formats_machine_readable_report(self):
+        report = {
+            "system": {"platform": "Linux", "python_version": "3.12.0"},
+            "dependencies": {
+                "openai-whisper": "1.0",
+                "faster-whisper": "1.2",
+                "ctranslate2": "4.8",
+                "demucs": "4.1",
+                "ffmpeg_available": True,
+                "whisper_cli_available": True,
+                "nvidia_smi": "RTX 5060 Ti, 600.00, 16384 MiB",
+            },
+            "cuda": {
+                "pytorch": {
+                    "available": True,
+                    "torch_version": "2.12",
+                    "runtime_version": "13.0",
+                    "error": None,
+                },
+                "ctranslate2": {"available": True, "error": None},
+                "devices": [
+                    {"index": 0, "name": "RTX 5060 Ti", "total_memory_mib": 16384}
+                ],
+            },
+            "backends": {
+                "openai-whisper": {"automatic_device": "cuda"},
+                "faster-whisper": {"automatic_device": "cuda"},
+            },
+        }
+
+        lines = diagnostic_lines(report)
+
+        self.assertIn("Python: 3.12.0", lines)
+        self.assertIn("GPU 0: RTX 5060 Ti (16384 MiB)", lines)
+        self.assertFalse(any("/home/" in line for line in lines))

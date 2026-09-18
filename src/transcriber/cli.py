@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
 
+from . import __version__
 from .benchmark import run_benchmark
 from .config import BACKENDS, OUTPUT_FORMATS, PROFILES, config_from_profile
 from .errors import TranscriberError
-from .hardware import diagnostic_lines, probe_cuda, resolve_device
+from .hardware import diagnostic_lines, diagnostic_report, probe_cuda, resolve_device
 from .media import list_video_files, validate_video_file
 from .jobs import run_job
 from .ui import select_files
@@ -22,10 +24,22 @@ def build_parser() -> argparse.ArgumentParser:
         prog="transcriber",
         description="Transcreve vídeos localmente com OpenAI Whisper.",
     )
-    parser.add_argument("--version", action="version", version="%(prog)s 0.5.0")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("doctor", help="diagnostica dependências, driver e CUDA")
+    doctor = subparsers.add_parser("doctor", help="diagnostica dependências, driver e CUDA")
+    doctor.add_argument("--json", action="store_true", help="emite relatório JSON")
+    doctor.add_argument(
+        "--require-cuda",
+        action="store_true",
+        help="retorna erro se CUDA não estiver acessível pelo backend",
+    )
+    doctor.add_argument(
+        "--backend",
+        choices=BACKENDS,
+        default="faster-whisper",
+        help="backend validado por --require-cuda (padrão: faster-whisper)",
+    )
 
     transcribe = subparsers.add_parser("transcribe", help="transcreve um ou mais vídeos")
     transcribe.add_argument("files", nargs="*", type=Path, help="arquivos de vídeo")
@@ -189,13 +203,32 @@ def _run_benchmark(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_doctor(args: argparse.Namespace) -> int:
+    report = diagnostic_report()
+    cuda_available = bool(report["backends"][args.backend]["cuda_available"])
+    passed = not args.require_cuda or cuda_available
+    report["validation"] = {
+        "backend": args.backend,
+        "cuda_required": args.require_cuda,
+        "passed": passed,
+    }
+    if args.json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    else:
+        print("\n".join(diagnostic_lines(report)))
+        if args.require_cuda:
+            result = "OK" if passed else "FALHOU"
+            stream = sys.stdout if passed else sys.stderr
+            print(f"Validação CUDA ({args.backend}): {result}", file=stream)
+    return 0 if passed else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(_normalize_argv(list(sys.argv[1:] if argv is None else argv)))
     try:
         if args.command == "doctor":
-            print("\n".join(diagnostic_lines()))
-            return 0
+            return _run_doctor(args)
         if args.command == "benchmark":
             return _run_benchmark(args)
         return _run_transcription(args)

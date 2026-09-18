@@ -9,6 +9,7 @@ import sys
 from dataclasses import dataclass
 from importlib import metadata
 from pathlib import Path
+from typing import Any
 
 from .errors import HardwareError
 
@@ -118,39 +119,99 @@ def _nvidia_smi_status() -> str:
     return f"falhou ({error[0] if error else f'código {result.returncode}'})"
 
 
-def diagnostic_lines() -> list[str]:
+def diagnostic_report() -> dict[str, Any]:
+    """Return a machine-readable report without user-specific filesystem paths."""
+
     cuda = probe_cuda()
-    ct2_version = _package_version("ctranslate2")
     ct2_cuda, ct2_error = _ctranslate2_cuda_available()
+    devices = [
+        {
+            "index": index,
+            "name": name,
+            "total_memory_mib": cuda.total_memory_mib[index],
+        }
+        for index, name in enumerate(cuda.devices)
+    ]
+    return {
+        "schema_version": 1,
+        "system": {
+            "platform": platform.platform(),
+            "python_version": sys.version.split()[0],
+        },
+        "dependencies": {
+            "openai-whisper": _package_version("openai-whisper"),
+            "faster-whisper": _package_version("faster-whisper"),
+            "ctranslate2": _package_version("ctranslate2"),
+            "demucs": _package_version("demucs"),
+            "ffmpeg_available": shutil.which("ffmpeg") is not None,
+            "whisper_cli_available": _whisper_executable() != "não encontrado",
+            "nvidia_smi": _nvidia_smi_status(),
+        },
+        "cuda": {
+            "pytorch": {
+                "available": cuda.available,
+                "torch_version": cuda.torch_version,
+                "runtime_version": cuda.runtime_version,
+                "error": cuda.error,
+            },
+            "ctranslate2": {
+                "available": ct2_cuda,
+                "error": ct2_error,
+            },
+            "devices": devices,
+        },
+        "backends": {
+            "openai-whisper": {
+                "cuda_available": cuda.available,
+                "automatic_device": "cuda" if cuda.available else "cpu",
+            },
+            "faster-whisper": {
+                "cuda_available": ct2_cuda,
+                "automatic_device": "cuda" if ct2_cuda else "cpu",
+            },
+        },
+    }
+
+
+def diagnostic_lines(report: dict[str, Any] | None = None) -> list[str]:
+    report = report or diagnostic_report()
+    system = report["system"]
+    dependencies = report["dependencies"]
+    cuda = report["cuda"]
+    pytorch = cuda["pytorch"]
+    ctranslate2 = cuda["ctranslate2"]
+    backends = report["backends"]
     lines = [
         "Diagnóstico do transcriber",
-        f"Sistema: {platform.platform()}",
-        f"Python: {sys.version.split()[0]} ({sys.executable})",
-        f"openai-whisper: {_package_version('openai-whisper')}",
-        f"Executável whisper: {_whisper_executable()}",
-        f"ffmpeg: {shutil.which('ffmpeg') or 'não encontrado'}",
-        f"nvidia-smi: {_nvidia_smi_status()}",
-        f"PyTorch: {cuda.torch_version or 'não instalado'}",
-        f"CUDA do PyTorch: {cuda.runtime_version or 'indisponível'}",
-        f"CUDA disponível: {'sim' if cuda.available else 'não'}",
-        f"faster-whisper: {_package_version('faster-whisper')}",
-        f"CTranslate2: {ct2_version}",
-        f"CUDA no CTranslate2: {'sim' if ct2_cuda else 'não'}",
-        f"Demucs: {_package_version('demucs')}",
+        f"Sistema: {system['platform']}",
+        f"Python: {system['python_version']}",
+        f"openai-whisper: {dependencies['openai-whisper']}",
+        f"Executável whisper: {'encontrado' if dependencies['whisper_cli_available'] else 'não encontrado'}",
+        f"ffmpeg: {'encontrado' if dependencies['ffmpeg_available'] else 'não encontrado'}",
+        f"nvidia-smi: {dependencies['nvidia_smi']}",
+        f"PyTorch: {pytorch['torch_version'] or 'não instalado'}",
+        f"CUDA do PyTorch: {pytorch['runtime_version'] or 'indisponível'}",
+        f"CUDA disponível: {'sim' if pytorch['available'] else 'não'}",
+        f"faster-whisper: {dependencies['faster-whisper']}",
+        f"CTranslate2: {dependencies['ctranslate2']}",
+        f"CUDA no CTranslate2: {'sim' if ctranslate2['available'] else 'não'}",
+        f"Demucs: {dependencies['demucs']}",
     ]
-    if cuda.error:
-        lines.append(f"Erro CUDA: {cuda.error}")
-    if ct2_error:
-        lines.append(f"Erro CTranslate2/CUDA: {ct2_error}")
-    for index, name in enumerate(cuda.devices):
-        memory = cuda.total_memory_mib[index]
-        lines.append(f"GPU {index}: {name} ({memory} MiB)")
+    if pytorch["error"]:
+        lines.append(f"Erro CUDA: {pytorch['error']}")
+    if ctranslate2["error"]:
+        lines.append(f"Erro CTranslate2/CUDA: {ctranslate2['error']}")
+    for device in cuda["devices"]:
+        lines.append(
+            f"GPU {device['index']}: {device['name']} "
+            f"({device['total_memory_mib']} MiB)"
+        )
     lines.append(
         f"Dispositivo automático (openai-whisper): "
-        f"{resolve_device('auto', cuda, 'openai-whisper')}"
+        f"{backends['openai-whisper']['automatic_device']}"
     )
     lines.append(
         f"Dispositivo automático (faster-whisper): "
-        f"{resolve_device('auto', cuda, 'faster-whisper')}"
+        f"{backends['faster-whisper']['automatic_device']}"
     )
     return lines
