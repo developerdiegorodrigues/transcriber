@@ -6,6 +6,18 @@ Ferramenta de linha de comando para transcrição local de vídeos com
 seleção interativa, processamento em lote, detecção automática de CUDA, benchmark e
 saídas em múltiplos formatos.
 
+## Imagens
+
+<div align=center>
+
+<img width="680" src="https://github.com/developerdiegorodrigues/transcribe/blob/main/images/converter_680x336.png" alt="Seletor interativo de vídeos" />
+
+<img width="345" src="https://github.com/developerdiegorodrigues/transcribe/blob/main/images/converter_345x472.png" alt="Progresso de uma transcrição" />
+
+<img width="680" src="https://github.com/developerdiegorodrigues/transcribe/blob/main/images/lyrics_1151x683.webp" alt="Progresso de uma transcrição" />
+
+</div>
+
 ## Recursos
 
 - Interface interativa no terminal para selecionar vídeos.
@@ -386,18 +398,6 @@ Estrutura principal:
 ├── tests/
 └── transcribe.py
 ```
-
-## Imagens
-
-<div align=center>
-
-<img width="680" src="https://github.com/developerdiegorodrigues/transcribe/blob/main/images/converter_680x336.png" alt="Seletor interativo de vídeos" />
-
-<img width="345" src="https://github.com/developerdiegorodrigues/transcribe/blob/main/images/converter_345x472.png" alt="Progresso de uma transcrição" />
-
-<img width="680" src="https://github.com/developerdiegorodrigues/transcribe/blob/main/images/lyrics_1151x683.webp" alt="Progresso de uma transcrição" />
-
-</div>
 
 ## Licença
 
