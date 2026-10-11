@@ -14,7 +14,7 @@ saídas em múltiplos formatos.
 
 <img width="345" src="https://github.com/developerdiegorodrigues/transcribe/blob/main/images/converter_345x472.png" alt="Progresso de uma transcrição" />
 
-<img width="680" src="https://github.com/developerdiegorodrigues/transcribe/blob/main/images/lyrics_1151x683.webp" alt="Progresso de uma transcrição" />
+<img width="680" src="https://github.com/developerdiegorodrigues/transcribe/blob/main/images/lyrics_1151x683.webp" alt="Print" />
 
 </div>
 
@@ -402,3 +402,25 @@ Estrutura principal:
 ## Licença
 
 Este projeto está licenciado sob os termos do arquivo [LICENSE](LICENSE).
+
+## Imagens
+
+<div align=center>
+
+<img width="800" src="https://github.com/developerdiegorodrigues/transcribe/blob/main/images/mavira_1.webp" alt="Print" />
+
+<br>
+
+<img width="400" src="https://github.com/developerdiegorodrigues/transcribe/blob/main/images/mavira_2.webp" alt="Print" />
+
+<img width="400" src="https://github.com/developerdiegorodrigues/transcribe/blob/main/images/mavira_3.webp" alt="Print" />
+
+<img width="400" src="https://github.com/developerdiegorodrigues/transcribe/blob/main/images/mavira_4.webp" alt="Print" />
+
+<img width="400" src="https://github.com/developerdiegorodrigues/transcribe/blob/main/images/mavira_5.webp" alt="Print" />
+
+<br>
+
+<img width="800" src="https://github.com/developerdiegorodrigues/transcribe/blob/main/images/mavira_6.webp" alt="Print" />
+
+</div>
