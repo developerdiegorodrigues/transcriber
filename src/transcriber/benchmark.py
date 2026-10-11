@@ -17,32 +17,18 @@ from typing import Any
 
 from .config import config_from_profile
 from .errors import DependencyError
-from .hardware import probe_cuda, resolve_device
+from .media import media_duration  # noqa: F401  (reexportado para compatibilidade)
+from .hardware import (
+    concurrent_compute_usage,
+    gpu_memory,
+    hardware_snapshot,
+    probe_cuda,
+    resolve_device,
+)
 from .pipeline import transcribe_file
 
 
-def media_duration(path: Path) -> float:
-    executable = shutil.which("ffprobe")
-    if executable is None:
-        raise DependencyError("ffprobe não encontrado; ele normalmente acompanha o FFmpeg.")
-    result = subprocess.run(
-        [
-            executable,
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            str(path),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise DependencyError(f"Não foi possível obter a duração de {path.name}.")
-    return float(result.stdout.strip())
+
 
 
 def _words(text: str) -> list[str]:
@@ -117,6 +103,15 @@ class GpuMemoryMonitor(AbstractContextManager["GpuMemoryMonitor"]):
             self._stop.wait(self.interval)
 
 
+def _relative_output(output_dir: Path, report_root: Path) -> str:
+    """Keep the report free of personal filesystem paths."""
+
+    try:
+        return str(output_dir.relative_to(report_root))
+    except ValueError:
+        return output_dir.name
+
+
 def run_benchmark(
     media_path: Path,
     profiles: list[str],
@@ -124,6 +119,11 @@ def run_benchmark(
     *,
     language: str | None = "English",
     reference: str | None = None,
+    model: str | None = None,
+    compute_type: str | None = None,
+    batch_size: int | None = None,
+    demucs_model: str | None = None,
+    window_batching: bool = False,
 ) -> dict[str, Any]:
     duration = media_duration(media_path)
     cuda = probe_cuda()
@@ -131,16 +131,26 @@ def run_benchmark(
     artifacts_root = output_path.parent / "artifacts" / media_path.stem
 
     for profile_name in profiles:
+        memory = gpu_memory()
+        contention = concurrent_compute_usage()
+        overrides: dict[str, Any] = {}
+        if demucs_model is not None:
+            overrides["demucs_model"] = demucs_model
         config = config_from_profile(
             profile_name,
             language=language,
             output_dir=artifacts_root / profile_name,
             output_format="all",
+            model=model,
+            compute_type=compute_type,
+            batch_size=batch_size,
+            window_batching=window_batching,
+            **overrides,
         )
         device = resolve_device(config.requested_device, cuda, config.backend)
         _prepare_model(config.backend, config.model)
         started = time.perf_counter()
-        with GpuMemoryMonitor() as memory:
+        with GpuMemoryMonitor() as monitor:
             outcome = transcribe_file(media_path, config, device)
         elapsed = time.perf_counter() - started
         result: dict[str, Any] = {
@@ -154,8 +164,10 @@ def run_benchmark(
             "audio_seconds": round(duration, 3),
             "realtime_factor": round(elapsed / duration, 4) if duration else None,
             "audio_x_realtime": round(duration / elapsed, 2) if elapsed else None,
-            "peak_gpu_memory_mib": memory.peak_mib,
-            "output_dir": str(outcome.output_dir),
+            "peak_gpu_memory_mib": monitor.peak_mib,
+            "free_vram_mib_at_start": memory.free_mib if memory else None,
+            "concurrent_compute": contention,
+            "output_dir": _relative_output(outcome.output_dir, output_path.parent),
         }
         if reference is not None:
             result["word_error_rate"] = round(word_error_rate(reference, outcome.text), 6)
@@ -163,8 +175,16 @@ def run_benchmark(
 
     report = {
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "media": str(media_path),
+        "media": media_path.name,
         "system": platform.platform(),
+        "hardware": hardware_snapshot(),
+        "overrides": {
+            "model": model,
+            "compute_type": compute_type,
+            "batch_size": batch_size,
+            "demucs_model": demucs_model,
+            "window_batching": window_batching,
+        },
         "results": results,
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)

@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from ..config import TranscriptionConfig
+from ..cuda_runtime import preload_cuda_libraries
 from ..errors import DependencyError, TranscriptionError
+from ..hardware import GpuMemory, gpu_memory, supported_compute_types
+from ..media import media_duration
 from ..outputs import write_outputs
 from ..quality import (
     annotate_quality,
@@ -15,6 +19,7 @@ from ..quality import (
     write_quality_report,
 )
 from ..result import TranscriptionOutcome
+from ..vram import BatchPlan, describe_allocation_failure, plan_batch_size
 
 
 def _language_code(language: str | None) -> str | None:
@@ -66,12 +71,53 @@ def _batch_candidates(requested: int) -> list[int]:
     return candidates
 
 
+#: Whisper's own analysis window. Batching without VAD slices the audio into windows
+#: of this length, because the batched pipeline needs segment boundaries.
+WINDOW_SECONDS = 30.0
+
+
+def _window_clips(duration: float, window: float = WINDOW_SECONDS) -> list[dict[str, float]]:
+    """Cover the whole audio with consecutive windows.
+
+    Each clip given to the batched pipeline is transcribed up to 30 seconds only, so
+    the windows must be at most that long or audio would be dropped silently.
+    """
+
+    clips: list[dict[str, float]] = []
+    start = 0.0
+    while start < duration:
+        clips.append({"start": start, "end": min(start + window, duration)})
+        start += window
+    return clips
+
+
+def _requires_segment_boundaries(error: Exception) -> bool:
+    return "clip timestamps" in str(error).casefold()
+
+
 def _is_out_of_memory(error: RuntimeError) -> bool:
     message = str(error).casefold()
     return any(
         marker in message
         for marker in ("out of memory", "failed to allocate", "cuda_error_out_of_memory")
     )
+
+
+def _batched_clips(
+    media_path: Path, config: TranscriptionConfig
+) -> list[dict[str, float]] | None:
+    """Return the windows that let the batched pipeline run without VAD.
+
+    ``None`` means batching is not possible for this configuration: the batched
+    pipeline derives its chunks from VAD and refuses any audio longer than one window
+    without explicit boundaries.
+    """
+
+    if config.vad_filter:
+        return None
+    if not config.window_batching:
+        return None
+    return _window_clips(media_duration(media_path))
 
 
 def _run_inference(
@@ -86,11 +132,25 @@ def _run_inference(
         "beam_size": config.beam_size,
         "vad_filter": config.vad_filter,
         "word_timestamps": config.word_timestamps,
+        # The batched pipeline defaults to dropping timestamp tokens, which collapses
+        # each chunk into one subtitle block spanning the whole window. Asking for them
+        # explicitly keeps subtitles usable and costs nothing measurable.
+        "without_timestamps": False,
         "log_progress": True,
         "temperature": config.temperatures,
         "condition_on_previous_text": config.condition_on_previous_text,
         "hallucination_silence_threshold": config.hallucination_silence_threshold,
     }
+    clips = _batched_clips(media_path, config)
+    if not config.vad_filter and clips is None and config.batch_size > 1:
+        print(
+            "Inferência em lote exige fronteiras de segmento, que vêm do VAD; "
+            "com o VAD desligado, este perfil usa batch 1. "
+            "Use --window-batching para processar em lote por janelas de 30s."
+        )
+        segments, info = model.transcribe(str(media_path), **common_options)
+        return list(segments), info, 1
+
     last_error: RuntimeError | None = None
     for batch_size in _batch_candidates(config.batch_size):
         try:
@@ -99,10 +159,20 @@ def _run_inference(
             else:
                 pipeline = BatchedInferencePipeline(model=model)
                 segments, info = pipeline.transcribe(
-                    str(media_path), batch_size=batch_size, **common_options
+                    str(media_path),
+                    batch_size=batch_size,
+                    clip_timestamps=clips,
+                    **common_options,
                 )
             return list(segments), info, batch_size
         except RuntimeError as exc:
+            if _requires_segment_boundaries(exc):
+                print(
+                    "O backend recusou a inferência em lote sem fronteiras de "
+                    "segmento; repetindo com batch 1."
+                )
+                segments, info = model.transcribe(str(media_path), **common_options)
+                return list(segments), info, 1
             if not _is_out_of_memory(exc) or batch_size == 1:
                 raise
             last_error = exc
@@ -156,6 +226,48 @@ def _retry_low_confidence_ranges(
     return merged, len(ranges), replaced
 
 
+def _plan_batch(
+    config: TranscriptionConfig, compute_type: str, memory: GpuMemory | None
+) -> BatchPlan:
+    return plan_batch_size(
+        config.batch_size,
+        free_mib=memory.free_mib if memory is not None else None,
+        model=config.model,
+        compute_type=compute_type,
+        explicit=config.batch_size_explicit,
+    )
+
+
+def _load_model(
+    model: str, device: str, compute_type: str, memory: GpuMemory | None
+) -> Any:
+    """Load the model, turning an allocation failure into an actionable message."""
+
+    from faster_whisper import WhisperModel
+
+    try:
+        return WhisperModel(model, device=device, compute_type=compute_type)
+    except ValueError as exc:
+        if "compute type" not in str(exc).casefold():
+            raise
+        supported = supported_compute_types(device)
+        detail = f" Disponíveis em {device}: {', '.join(supported)}." if supported else ""
+        raise TranscriptionError(
+            f"Precisão '{compute_type}' não é suportada por este dispositivo.{detail}"
+        ) from exc
+    except RuntimeError as exc:
+        if device != "cuda" or not _is_out_of_memory(exc):
+            raise
+        raise TranscriptionError(
+            describe_allocation_failure(
+                free_mib=memory.free_mib if memory is not None else None,
+                model=model,
+                compute_type=compute_type,
+                device_total_mib=memory.total_mib if memory is not None else None,
+            )
+        ) from exc
+
+
 def transcribe_file(
     media_path: Path,
     config: TranscriptionConfig,
@@ -163,8 +275,16 @@ def transcribe_file(
     *,
     output_media_path: Path | None = None,
 ) -> TranscriptionOutcome:
+    if device == "cuda":
+        libraries = preload_cuda_libraries()
+        if not libraries.complete:
+            raise DependencyError(
+                f"{libraries.describe_missing()}. "
+                "Execute 'transcriber doctor' para diagnosticar."
+            )
+
     try:
-        from faster_whisper import WhisperModel
+        import faster_whisper  # noqa: F401
     except ImportError as exc:  # pragma: no cover - installation dependent
         raise DependencyError(
             "faster-whisper não está instalado. Reinstale usando requirements.lock."
@@ -173,19 +293,29 @@ def transcribe_file(
     compute_type = config.compute_type_for(device)
     output_media_path = output_media_path or media_path
     output_dir = config.output_dir.expanduser().resolve() / output_media_path.stem
+    memory = gpu_memory() if device == "cuda" else None
+    plan = _plan_batch(config, compute_type, memory)
     print(f"\nTranscrevendo '{media_path.name}'")
     print(
         f"Backend: faster-whisper | modelo: {config.model} | dispositivo: {device} "
-        f"| precisão: {compute_type} | batch inicial: {config.batch_size}"
+        f"| precisão: {compute_type} | batch inicial: {plan.batch_size}"
     )
+    if memory is not None:
+        print(f"VRAM: {memory.free_mib} MiB livres de {memory.total_mib} MiB | {plan.reason}")
+    if not plan.fits:
+        print(
+            "Aviso: a VRAM livre pode não acomodar este modelo; "
+            "se falhar, a mensagem de erro trará as alternativas."
+        )
+    staged = replace(config, batch_size=plan.batch_size)
     try:
-        model = WhisperModel(config.model, device=device, compute_type=compute_type)
-        segments, info, effective_batch = _run_inference(model, media_path, config)
+        model = _load_model(config.model, device, compute_type, memory)
+        segments, info, effective_batch = _run_inference(model, media_path, staged)
         attempted_retries = 0
         accepted_retries = 0
         if config.retry_low_confidence:
             segments, attempted_retries, accepted_retries = _retry_low_confidence_ranges(
-                model, media_path, segments, config
+                model, media_path, segments, staged
             )
     except Exception as exc:
         if isinstance(exc, (DependencyError, TranscriptionError)):
@@ -224,4 +354,6 @@ def transcribe_file(
         device=device,
         compute_type=compute_type,
         batch_size=effective_batch,
+        requested_batch_size=plan.batch_size,
+        free_vram_mib=memory.free_mib if memory is not None else None,
     )

@@ -66,3 +66,70 @@ class CliTests(TestCase):
 
         self.assertEqual(result, 1)
         self.assertIn("FALHOU", stderr.getvalue())
+
+
+class DoctorSmokeTestTests(TestCase):
+    def _report(self) -> dict:
+        return {
+            "backends": {
+                "faster-whisper": {"cuda_available": True},
+                "openai-whisper": {"cuda_available": True},
+            }
+        }
+
+    @patch("transcriber.cli.cuda_smoke_test", return_value=(False, "libcublas.so.12 ausente"))
+    @patch("transcriber.cli.diagnostic_lines", return_value=["diagnóstico"])
+    @patch("transcriber.cli.diagnostic_report")
+    def test_require_cuda_fails_when_the_gpu_cannot_actually_run(
+        self, diagnostic_report, _lines, _smoke
+    ):
+        diagnostic_report.return_value = self._report()
+        stderr = StringIO()
+
+        with redirect_stdout(StringIO()), redirect_stderr(stderr):
+            result = main(["doctor", "--require-cuda", "--smoke-test"])
+
+        self.assertEqual(result, 1)
+        self.assertIn("FALHOU", stderr.getvalue())
+        self.assertIn("libcublas.so.12 ausente", stderr.getvalue())
+
+    @patch("transcriber.cli.cuda_smoke_test", return_value=(True, None))
+    @patch("transcriber.cli.diagnostic_lines", return_value=["diagnóstico"])
+    @patch("transcriber.cli.diagnostic_report")
+    def test_passing_smoke_test_is_reported(self, diagnostic_report, _lines, _smoke):
+        diagnostic_report.return_value = self._report()
+        stdout = StringIO()
+
+        with redirect_stdout(stdout), redirect_stderr(StringIO()):
+            result = main(["doctor", "--require-cuda", "--smoke-test"])
+
+        self.assertEqual(result, 0)
+        self.assertIn("Teste de fumaça na GPU: OK", stdout.getvalue())
+
+    @patch("transcriber.cli.cuda_smoke_test")
+    @patch("transcriber.cli.diagnostic_report")
+    def test_smoke_test_is_rejected_for_the_legacy_backend(
+        self, diagnostic_report, smoke
+    ):
+        diagnostic_report.return_value = self._report()
+        stderr = StringIO()
+
+        with redirect_stdout(StringIO()), redirect_stderr(stderr):
+            result = main(["doctor", "--smoke-test", "--backend", "openai-whisper"])
+
+        self.assertEqual(result, 1)
+        self.assertIn("faster-whisper", stderr.getvalue())
+        smoke.assert_not_called()
+
+    @patch("transcriber.cli.cuda_smoke_test")
+    @patch("transcriber.cli.diagnostic_lines", return_value=["diagnóstico"])
+    @patch("transcriber.cli.diagnostic_report")
+    def test_smoke_test_is_not_run_unless_requested(
+        self, diagnostic_report, _lines, smoke
+    ):
+        diagnostic_report.return_value = self._report()
+
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+            self.assertEqual(main(["doctor"]), 0)
+
+        smoke.assert_not_called()

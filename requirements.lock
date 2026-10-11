@@ -1,4 +1,7 @@
 # Snapshot reproduzível do ambiente Linux validado em 2026-09-18.
+# Atualizado em 2026-10-10: o CTranslate2 é compilado contra CUDA 12 e exige
+# libcublas.so.12, enquanto o PyTorch traz a linha cu13. As duas convivem porque os
+# sonames são distintos; sem a cu12 o backend faster-whisper não roda em GPU.
 # Instale o projeto separadamente com: python -m pip install --no-deps -e .
 anyio==4.15.1
 av==18.1.0
@@ -32,8 +35,10 @@ networkx==3.6.1
 numba==0.65.1
 numpy==2.4.6
 nvidia-cublas==13.1.1.3
+nvidia-cublas-cu12==12.9.2.10
 nvidia-cuda-cupti==13.0.85
 nvidia-cuda-nvrtc==13.0.88
+nvidia-cuda-nvrtc-cu12==12.9.86
 nvidia-cuda-runtime==13.0.96
 nvidia-cudnn-cu13==9.20.0.48
 nvidia-cufft==12.0.0.61

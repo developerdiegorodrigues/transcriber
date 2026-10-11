@@ -57,6 +57,8 @@ def _write_metadata(
             "device": outcome.device,
             "compute_type": outcome.compute_type,
             "batch_size": outcome.batch_size,
+            "planned_batch_size": outcome.requested_batch_size,
+            "free_vram_mib": outcome.free_vram_mib,
         },
         "config": _config_metadata(config),
         "versions": {

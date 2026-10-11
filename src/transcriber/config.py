@@ -29,6 +29,7 @@ class Profile:
     condition_on_previous_text: bool = True
     temperatures: tuple[float, ...] = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
     hallucination_silence_threshold: float | None = None
+    demucs_model: str = "htdemucs"
 
 
 PROFILES: dict[str, Profile] = {
@@ -51,6 +52,10 @@ PROFILES: dict[str, Profile] = {
         condition_on_previous_text=False,
         temperatures=(0.0, 0.2, 0.4),
         hallucination_silence_threshold=2.0,
+        # Measured: the fine-tuned ensemble costs 2.4x the time and no extra VRAM,
+        # and cuts the low-confidence review queue from 19 segments to 11. This
+        # profile exists for accuracy, so it pays that price by default.
+        demucs_model="htdemucs_ft",
     ),
 }
 
@@ -66,6 +71,8 @@ class TranscriptionConfig:
     output_format: str = "all"
     compute_type: str | None = None
     batch_size: int = 8
+    batch_size_explicit: bool = False
+    window_batching: bool = False
     beam_size: int = 5
     vad_filter: bool = True
     word_timestamps: bool = False
@@ -119,9 +126,10 @@ def config_from_profile(
     word_timestamps: bool | None = None,
     separate_vocals: bool | None = None,
     separation_device: str = "auto",
-    demucs_model: str = "htdemucs",
+    demucs_model: str | None = None,
     quality_review: bool | None = None,
     retry_low_confidence: bool | None = None,
+    window_batching: bool = False,
 ) -> TranscriptionConfig:
     try:
         profile = PROFILES[profile_name]
@@ -137,6 +145,8 @@ def config_from_profile(
         output_format=output_format,
         compute_type=compute_type or profile.compute_type,
         batch_size=batch_size or profile.batch_size,
+        batch_size_explicit=batch_size is not None,
+        window_batching=window_batching,
         beam_size=beam_size or profile.beam_size,
         vad_filter=profile.vad_filter if vad_filter is None else vad_filter,
         word_timestamps=(
@@ -146,7 +156,7 @@ def config_from_profile(
             profile.separate_vocals if separate_vocals is None else separate_vocals
         ),
         separation_device=separation_device,
-        demucs_model=demucs_model,
+        demucs_model=demucs_model or profile.demucs_model,
         quality_review=(
             profile.quality_review if quality_review is None else quality_review
         ),

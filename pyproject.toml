@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "video-transcriber"
-version = "0.6.0"
+version = "0.7.0"
 description = "CLI local para transcrição de vídeos com Whisper"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -17,6 +17,9 @@ dependencies = [
   "demucs==4.1.0",
   "faster-whisper==1.2.1",
   "openai-whisper==20250625",
+  # O CTranslate2 resolve libcublas.so.12 pelo carregador do sistema; em um ambiente
+  # com apenas a linha CUDA 13 do PyTorch, a GPU fica inacessível para ele.
+  "nvidia-cublas-cu12==12.9.2.10; sys_platform == 'linux' and platform_machine == 'x86_64'",
 ]
 
 [project.scripts]

@@ -15,4 +15,6 @@ class TranscriptionOutcome:
     device: str
     compute_type: str | None = None
     batch_size: int | None = None
+    requested_batch_size: int | None = None
+    free_vram_mib: int | None = None
     elapsed_seconds: float | None = None
