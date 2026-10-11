@@ -13,6 +13,7 @@ from transcriber.backends.faster_whisper import (
     _plan_batch,
     _retry_low_confidence_ranges,
     _run_inference,
+    vad_coverage_notice,
 )
 from transcriber.config import TranscriptionConfig
 from transcriber.errors import TranscriptionError
@@ -268,3 +269,27 @@ class TimestampGranularityTests(TestCase):
         _run_inference(model, Path("video.mp4"), config)
 
         self.assertIs(model.transcribe.call_args.kwargs["without_timestamps"], False)
+
+
+class VadCoverageTests(TestCase):
+    def test_warns_when_most_of_the_audio_was_discarded(self):
+        notice = vad_coverage_notice(280.0, 11.9)
+
+        self.assertIsNotNone(notice)
+        self.assertIn("12s de 280s", notice)
+        self.assertIn("4%", notice)
+        self.assertIn("--profile lyrics", notice)
+
+    def test_quiet_when_coverage_is_healthy(self):
+        self.assertIsNone(vad_coverage_notice(280.0, 200.0))
+
+    def test_quiet_at_the_threshold(self):
+        self.assertIsNone(vad_coverage_notice(100.0, 50.0))
+
+    def test_warns_just_below_the_threshold(self):
+        self.assertIsNotNone(vad_coverage_notice(100.0, 49.0))
+
+    def test_unknown_values_are_not_reported(self):
+        self.assertIsNone(vad_coverage_notice(None, 10.0))
+        self.assertIsNone(vad_coverage_notice(280.0, None))
+        self.assertIsNone(vad_coverage_notice(0.0, 0.0))

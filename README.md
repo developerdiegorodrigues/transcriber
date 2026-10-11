@@ -190,7 +190,7 @@ o item sob o cursor.
 | `quality` | faster-whisper | `large-v3` | auto | FP16 CUDA / INT8 CPU | 4 |
 | `cpu` | faster-whisper | `small` | CPU | INT8 | 4 |
 | `legacy` | openai-whisper | `large` | auto | FP16 CUDA / FP32 CPU | 1 |
-| `lyrics` | faster-whisper + `htdemucs_ft` | `large-v3` | auto | FP16 CUDA / INT8 CPU | 4 |
+| `lyrics` | faster-whisper + Demucs | `large-v3` | auto | FP16 CUDA / INT8 CPU | 4 |
 
 O batch da tabela é um ponto de partida: quando não há `--batch-size` explícito, ele
 é reduzido conforme a VRAM **livre** no momento da execução, para que o trabalho caiba
@@ -202,6 +202,25 @@ Ele nunca é aumentado, e isso é medido, não conservadorismo: numa RTX 5060 Ti
 áudio, e o `turbo` em batch 32 ficou mais lento que em batch 1 — apesar de o pico de
 VRAM (12,6 GiB) caber folgado nos 16 GiB. VRAM livre compra um modelo maior, não um
 batch maior.
+
+### Quando o VAD descarta a mídia
+
+O filtro de voz (VAD) do perfil `fast` classifica vocais cantados sobre instrumental
+como não-fala. Numa música, isso descarta quase tudo: medido em dois vídeos deste
+repositório, o VAD manteve 4 % e 1 % do áudio, e a transcrição saiu com 23 e 161
+palavras. O programa avisa quando a cobertura cai abaixo de metade do áudio:
+
+```text
+Aviso: o VAD manteve apenas 12s de 280s (4% do áudio); o restante não foi transcrito.
+```
+
+Dois sintomas acompanham essa perda. O texto some, e as legendas que sobram ficam
+desalinhadas, porque os vãos descartados são absorvidos no fim de cada bloco — um
+trecho de três palavras pode ocupar 36 segundos de legenda.
+
+Para conteúdo musical, use `--profile lyrics` (isola o vocal com Demucs e não usa VAD)
+ou `--no-vad`. Na mesma música, o `fast` produziu 23 palavras até 00:53 e o `lyrics`
+produziu 379 cobrindo os 4m40s.
 
 ### Inferência em lote e VAD
 
@@ -242,7 +261,7 @@ O perfil `lyrics` foi desenhado para vídeos musicais:
 O fluxo desse perfil é:
 
 1. O FFmpeg extrai temporariamente áudio estéreo em 44,1 kHz.
-2. O Demucs `htdemucs_ft` isola o stem vocal.
+2. O Demucs `htdemucs` isola o stem vocal.
 3. O processo do Demucs termina, liberando CPU/GPU antes de carregar o Whisper.
 4. O `large-v3` transcreve os vocais sem VAD e sem carregar contexto entre janelas.
 5. Intervalos de baixa confiança são agrupados e reavaliados com temperatura zero.
@@ -260,17 +279,13 @@ Esses relatórios apontam baixa probabilidade, compressão excessiva, alta proba
 de silêncio ou temperatura elevada. Eles servem como fila objetiva de revisão; o
 texto suspeito não é apagado silenciosamente.
 
-O `htdemucs_ft` é um ensemble de quatro modelos e é o padrão deste perfil por
-medição: numa música de 4m40s ele levou 66,7 s contra 27,3 s do `htdemucs`, **sem
-custo adicional de VRAM** (4172 MiB contra 4140 MiB, porque o ensemble roda em
-sequência), e reduziu a fila de revisão de 19 para 11 segmentos suspeitos, com 1,5 %
-de divergência de texto. Como a revisão manual é o trabalho real deste perfil, 40
-segundos a mais por música compram 42 % menos trechos para conferir.
-
-Para priorizar velocidade, use a separação rápida:
+A separação padrão é o `htdemucs`. O `htdemucs_ft`, ensemble de quatro modelos, está
+disponível e não custa VRAM adicional (4172 MiB contra 4140 MiB, pois os modelos rodam
+em sequência), mas custa 2,4× no tempo — 66,7 s contra 27,3 s numa música de 4m40s — e
+não demonstrou ganho de qualidade acima do ruído de medição nos testes feitos:
 
 ```bash
-.venv/bin/transcriber musica.mp4 --profile lyrics --demucs-model htdemucs
+.venv/bin/transcriber musica.mp4 --profile lyrics --demucs-model htdemucs_ft
 ```
 
 As opções do perfil podem ser desativadas ou ajustadas individualmente:

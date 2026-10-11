@@ -52,10 +52,10 @@ PROFILES: dict[str, Profile] = {
         condition_on_previous_text=False,
         temperatures=(0.0, 0.2, 0.4),
         hallucination_silence_threshold=2.0,
-        # Measured: the fine-tuned ensemble costs 2.4x the time and no extra VRAM,
-        # and cuts the low-confidence review queue from 19 segments to 11. This
-        # profile exists for accuracy, so it pays that price by default.
-        demucs_model="htdemucs_ft",
+        # Stays on the fast separation: the fine-tuned ensemble costs 2.4x the time
+        # and its advantage, if any, is below the noise floor of the review-queue
+        # metric (16-22 flagged segments across runs of htdemucs alone). See D15.
+        demucs_model="htdemucs",
     ),
 }
 

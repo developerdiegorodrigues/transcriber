@@ -17,4 +17,6 @@ class TranscriptionOutcome:
     batch_size: int | None = None
     requested_batch_size: int | None = None
     free_vram_mib: int | None = None
+    audio_seconds: float | None = None
+    audio_after_vad_seconds: float | None = None
     elapsed_seconds: float | None = None

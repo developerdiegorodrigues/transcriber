@@ -76,6 +76,35 @@ def _batch_candidates(requested: int) -> list[int]:
 WINDOW_SECONDS = 30.0
 
 
+#: Below this share of audio kept by the VAD, the transcription is reported as
+#: suspect. Sung vocals over instrumental backing are routinely classified as
+#: non-speech, which silently discards most of the media.
+VAD_COVERAGE_FLOOR = 0.5
+
+
+def vad_coverage_notice(
+    duration: float | None, duration_after_vad: float | None
+) -> str | None:
+    """Warn when the VAD discarded most of the audio.
+
+    Returns ``None`` when coverage is healthy or unknown. The transcription itself is
+    valid; what the user needs to know is that it covers a fraction of the media.
+    """
+
+    if not duration or duration_after_vad is None:
+        return None
+    share = duration_after_vad / duration
+    if share >= VAD_COVERAGE_FLOOR:
+        return None
+    return (
+        f"Aviso: o VAD manteve apenas {duration_after_vad:.0f}s de {duration:.0f}s "
+        f"({share * 100:.0f}% do áudio); o restante não foi transcrito. "
+        "Isso é comum em música, pois vocais cantados sobre instrumental são "
+        "classificados como não-fala. Use --no-vad ou --profile lyrics para "
+        "transcrever a mídia inteira."
+    )
+
+
 def _window_clips(duration: float, window: float = WINDOW_SECONDS) -> list[dict[str, float]]:
     """Cover the whole audio with consecutive windows.
 
@@ -322,6 +351,12 @@ def transcribe_file(
             raise
         raise TranscriptionError(f"Falha no faster-whisper: {exc}") from exc
 
+    notice = vad_coverage_notice(
+        getattr(info, "duration", None), getattr(info, "duration_after_vad", None)
+    ) if config.vad_filter else None
+    if notice:
+        print(notice)
+
     segment_data = [_segment_to_dict(segment) for segment in segments]
     for index, segment in enumerate(segment_data):
         segment["id"] = index
@@ -356,4 +391,6 @@ def transcribe_file(
         batch_size=effective_batch,
         requested_batch_size=plan.batch_size,
         free_vram_mib=memory.free_mib if memory is not None else None,
+        audio_seconds=result["duration"],
+        audio_after_vad_seconds=result["duration_after_vad"],
     )

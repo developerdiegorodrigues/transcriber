@@ -59,6 +59,8 @@ def _write_metadata(
             "batch_size": outcome.batch_size,
             "planned_batch_size": outcome.requested_batch_size,
             "free_vram_mib": outcome.free_vram_mib,
+            "audio_seconds": outcome.audio_seconds,
+            "audio_after_vad_seconds": outcome.audio_after_vad_seconds,
         },
         "config": _config_metadata(config),
         "versions": {

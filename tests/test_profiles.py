@@ -41,15 +41,13 @@ class ProfileTests(TestCase):
 
 
 class DemucsModelTests(TestCase):
-    def test_lyrics_defaults_to_the_fine_tuned_ensemble(self):
-        # Measured: 42% fewer low-confidence segments for 2.4x the time, same VRAM.
-        self.assertEqual(config_from_profile("lyrics").demucs_model, "htdemucs_ft")
-
-    def test_other_profiles_keep_the_fast_separation(self):
-        for name in ("fast", "quality", "cpu"):
+    def test_every_profile_defaults_to_the_fast_separation(self):
+        # htdemucs_ft costs 2.4x the time without a difference that survives the
+        # run-to-run noise of the review-queue metric.
+        for name in ("fast", "quality", "cpu", "lyrics"):
             self.assertEqual(config_from_profile(name).demucs_model, "htdemucs")
 
     def test_explicit_model_overrides_the_profile(self):
-        config = config_from_profile("lyrics", demucs_model="htdemucs")
+        config = config_from_profile("lyrics", demucs_model="htdemucs_ft")
 
-        self.assertEqual(config.demucs_model, "htdemucs")
+        self.assertEqual(config.demucs_model, "htdemucs_ft")

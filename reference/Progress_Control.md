@@ -292,12 +292,72 @@ Divergência de texto entre as duas: 1,50 % (379 palavras em ambas).
 
 A premissa registrada no TODO original — de que o ensemble era "caro demais" para a
 placa antiga — estava errada. Ele não consome VRAM adicional, porque os quatro modelos
-rodam em sequência; o custo é só de tempo. O que mudou com a placa nova não foi a
-viabilidade, foi o preço ficar irrelevante.
+rodam em sequência; o custo é só de tempo.
 
-O ganho não aparece no texto, aparece na confiança: a fila de revisão caiu 42 %. Como
-a revisão manual é o trabalho real do perfil `lyrics`, `htdemucs_ft` virou o padrão
-dele, com `--demucs-model htdemucs` disponível para priorizar velocidade.
+**Conclusão inicial retratada.** Esta medição tinha n=1 por modelo, e a partir dela eu
+afirmei que o `htdemucs_ft` reduzia a fila de revisão em 42 % (19 → 11) e troquei o
+padrão do perfil `lyrics`. Repetindo com n=3 por modelo na mesma mídia:
+
+| Separação | Suspeitos por execução | Média | Segmentos | Palavras |
+| --- | --- | ---: | --- | --- |
+| `htdemucs` | 16, 22, 22 (+19 da campanha) | 19,8 | 60, 60, 60 | 379 em todas |
+| `htdemucs_ft` | 19, 17, 19 (+11 da campanha) | 17,0 | 57, 55, 57 | 379, 380, 379 |
+
+As faixas se sobrepõem (16–22 contra 11–19): o `11` era o extremo inferior do próprio
+ruído do `htdemucs_ft`, e o `19` o extremo superior do `htdemucs`. A diferença de
+médias não sustenta pagar 2,4× no tempo. **O padrão do perfil `lyrics` voltou para
+`htdemucs`**; `--demucs-model htdemucs_ft` continua disponível.
+
+### D17 — A contagem da fila de revisão é métrica ruidosa
+
+Derivado de D15, e vale para qualquer medição futura. Nas seis execuções acima o
+**texto foi idêntico** (379 palavras em cinco das seis), mas a contagem de segmentos
+suspeitos variou de 16 a 22 no mesmo modelo — ±27 %.
+
+A causa é estrutural: `quality_reasons()` decide por comparação com limiar
+(`avg_logprob < -1.0`, `compression_ratio > 2.4`, `no_speech_prob > 0.6`). Segmentos
+cujos valores ficam perto do limiar trocam de lado entre execuções por variação
+numérica da GPU, sem que o texto mude.
+
+Consequência prática: nunca compare duas configurações por uma única execução dessa
+contagem. Para uma diferença de ~15 % ser detectável, são necessárias várias repetições
+por braço — e foi exatamente esse erro que produziu a conclusão retratada em D15.
+
+### D16 — O VAD descartava a mídia em silêncio (perfil padrão)
+
+Relatado pelo usuário em 2026-10-10: os `.srt` de dois vídeos saíram "faltando
+trechos". Ambos foram gerados com o perfil `fast` (padrão, VAD ligado, `turbo`).
+
+| Mídia | Duração | Áudio mantido pelo VAD | Segmentos | Palavras | Tempo |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| MAVIRA | 280 s | 11,9 s (4,3 %) | 6 | 23 | 4,4 s |
+| Hypnotic Vocal Flow | 6941 s | 69,8 s (1,0 %) | 32 | 161 | 36,2 s |
+
+Não houve erro: o programa reportou sucesso tendo transcrito 1 % de um vídeo de quase
+duas horas. O dado estava disponível (`duration_after_vad`, já presente no `.json` de
+saída) e não era usado para nada.
+
+Dois sintomas, uma causa. Além da perda de texto, os segmentos sobreviventes ficam com
+duração distorcida: no MAVIRA, o bloco 3 cobre 8,32 s–44,26 s com três palavras, porque
+os vãos descartados são absorvidos no fim de cada legenda. Os seis segmentos
+compartilham o mesmo `avg_logprob` (−0,261), sinal de que vieram de uma decodificação
+única sobre os trechos que o VAD aceitou.
+
+Comparação na mesma mídia (MAVIRA, GPU ociosa):
+
+| Perfil | Segmentos | Palavras | Último fim | 5-gramas repetidos 3+× |
+| --- | ---: | ---: | ---: | ---: |
+| `fast` (VAD ligado) | 6 | 23 | 53,8 s | — |
+| `quality` (sem VAD) | 61 | 445 | 280,0 s | 52 |
+| `lyrics` (Demucs, sem VAD) | 57 | 379 | 268,7 s | 16 |
+
+O `quality` recupera mais palavras, mas 52 de seus 5-gramas repetem 3 vezes ou mais —
+inclui o laço `'i came to you, i'` 8×, já visto em D13. O `lyrics` é o perfil correto
+para música.
+
+Correção: `vad_coverage_notice()` avisa quando o VAD mantém menos de 50 % do áudio,
+nomeando os números e a alternativa, e o `metadata.json` passa a registrar
+`audio_seconds` e `audio_after_vad_seconds` para auditar execuções passadas.
 
 ## Verificado e descartado
 
@@ -364,7 +424,8 @@ de divergência medem diferença entre duas saídas do próprio modelo, não acu
 | Data | Fase | O que mudou |
 | --- | --- | --- |
 | 2026-10-10 | — | Auditoria de hardware pós-upgrade; D1–D8 registradas; `TODO.md`, `AGENTS.md` e este arquivo criados. |
-| 2026-10-10 | 3.1 | `htdemucs_ft` medido (D15) e adotado como padrão do perfil `lyrics`: fila de revisão 42 % menor, sem custo de VRAM. |
+| 2026-10-10 | 3.1 | `htdemucs_ft` medido (D15). Primeira conclusão (fila 42 % menor) **retratada** ao repetir com n=3: a diferença fica dentro do ruído (D17). Padrão do `lyrics` revertido para `htdemucs`. |
+| 2026-10-10 | 0.5 | Perda silenciosa de áudio pelo VAD (D16), relatada pelo usuário: aviso de cobertura implementado e cobertura registrada no `metadata.json`. |
 | 2026-10-10 | 1.1, 1.3 | Campanha com GPU ociosa (D14): joelho de batch em 4–8, `MAXIMUM_AUTOMATIC_BATCH` de 32 para 8, subida de batch removida (era regressão de até 2,5×), FP16 mantido como padrão. Linha de base estabelecida. |
 | 2026-10-10 | 0.3, 0.4 | Bugs pré-existentes D11 (lote sem VAD falhava acima de 30 s) e D12 (legendas com granularidade de janela) corrigidos; `--window-batching` adicionado. |
 | 2026-10-10 | 1.2 | Batch dimensionado pela VRAM livre (`vram.py`), OOM de carregamento com mensagem acionável, VRAM e batch planejado no `metadata.json`. Validado na GPU disputada: `turbo` FP16 recusado com diagnóstico completo e `turbo` int8_float16 concluído em 6,09 s com batch 8→1. |

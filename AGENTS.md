@@ -124,6 +124,20 @@ revela isso. Além disso, as mídias deste diretório são musicais e o VAD dete
 7,7 % de fala, então qualquer ×RT medido com VAD ligado mede o VAD. Meça com o perfil
 `quality` (VAD desligado) para que a carga seja real.
 
+## Métricas que enganam
+
+- **A contagem de segmentos suspeitos (`low_confidence_segments`) varia ±27 % entre
+  execuções idênticas**, porque os sinais de qualidade são comparações com limiar e os
+  valores perto do limiar oscilam por variação numérica da GPU — mesmo com o texto
+  saindo igual. Nunca compare duas configurações por uma execução só; já produziu uma
+  conclusão errada neste projeto (D15/D17).
+- **Divergência de texto (WER contra outra saída) não é acurácia.** O modo sequencial
+  alucina laços de repetição em música, então "mais palavras" ou "mais diferente" não
+  diz qual saída é melhor. Sem referência humana, relate a divergência como diferença,
+  nunca como erro.
+- **×RT com VAD ligado em mídia musical mede o VAD**, que descarta de 95 % a 99 % desse
+  áudio.
+
 ## Mapa do código
 
 | Arquivo | Responsabilidade |

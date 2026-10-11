@@ -88,6 +88,20 @@ que é o padrão.
 **Medido:** sem custo de tempo (1,02 s contra 1,21 s, dentro do ruído) e de 1 segmento
 de 51,3 s para 6 de 8,5 s em média.
 
+## Fase 0.5 — Perda silenciosa de áudio pelo VAD — CONCLUÍDA em 2026-10-10
+
+Relatado pelo usuário (D16): o perfil padrão descartou 96 % e 99 % do áudio de dois
+vídeos musicais e reportou sucesso. Viola a invariante de não degradar em silêncio.
+
+- [x] `vad_coverage_notice()`: aviso quando o VAD mantém menos de 50 % do áudio, com os
+      números medidos e a alternativa (`--no-vad` ou `--profile lyrics`).
+- [x] `metadata.json` registra `audio_seconds` e `audio_after_vad_seconds`, para que uma
+      execução antiga possa ser auditada depois.
+- [x] Testes do limiar, incluindo os casos de valor desconhecido.
+- [ ] Avaliar se o perfil `fast` deveria desligar o VAD por padrão, ou se o aviso basta.
+      O VAD é o que torna a inferência em lote possível (ver Fase 0.3), então desligá-lo
+      no perfil de velocidade tem custo próprio — decidir com medição em mídia falada.
+
 ## Fase 1 — Aproveitar a arquitetura e os 16 GiB
 
 ### 1.1 Precisões novas (`bfloat16`, `int8_float16`) — CONCLUÍDA em 2026-10-10
@@ -189,9 +203,11 @@ registrar após o upgrade não pode ser comparada com nada anterior.
 - [x] Validar tempo e pico de VRAM. A premissa de que era "caro demais" estava errada:
       não consome VRAM adicional (4172 MiB contra 4140 MiB), só tempo (66,7 s contra
       27,3 s). Os quatro modelos rodam em sequência.
-- [x] Decidido: virou o padrão do perfil `lyrics`. A fila de revisão caiu de 19 para 11
-      segmentos suspeitos (−42 %) com 1,5 % de divergência de texto, e a revisão manual
-      é o trabalho real desse perfil. `--demucs-model htdemucs` prioriza velocidade.
+- [x] Decidido, depois de uma retratação: o padrão do `lyrics` **continua `htdemucs`**.
+      A primeira medição (n=1) sugeriu −42 % na fila de revisão, mas repetir com n=3
+      mostrou faixas sobrepostas (16–22 contra 11–19) — era ruído (D17). Não há
+      evidência que justifique 2,4× no tempo. `--demucs-model htdemucs_ft` segue
+      disponível para quem quiser testar em outra mídia.
 
 ### 3.2 Sobrepor separação e transcrição em lote
 
